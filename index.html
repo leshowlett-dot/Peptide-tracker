@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#091518">
+<meta name="description" content="Private peptide, dose, stock and progress tracker. Data stays on your device.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Peptide Tracker">
+<title>Peptide Tracker</title>
+<style>
+:root{
+  --bg:#091518; --card:#112227; --card-line:#1e3a40; --hero:#11302e; --nav:#0e1d22;
+  --text:#f0fdf9; --muted:#94a3b8; --accent:#2dd4bf; --accent-ink:#042f2c; --chip:#163836;
+  --field:#0b1b20; --danger:#f87171; --overlay:rgba(0,0,0,.7); --grid:#1e3a40;
+}
+[data-theme="light"]{
+  --bg:#f8fafc; --card:#ffffff; --card-line:#e2e8f0; --hero:#f0fdf4; --nav:#ffffff;
+  --text:#0f172a; --muted:#64748b; --accent:#0d9488; --accent-ink:#ffffff; --chip:#ccfbf1;
+  --field:#f1f5f9; --danger:#dc2626; --overlay:rgba(0,0,0,.4); --grid:#e2e8f0;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+body{min-height:100vh}
+#app{max-width:640px;margin:0 auto;padding:20px 16px 110px}
+.eyebrow{letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-size:12px;font-weight:600;margin-bottom:2px}
+h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:0 0 16px}
+h2{font-size:20px;font-weight:700;margin:0 0 12px;letter-spacing:-.01em}
+.topbar{display:flex;gap:10px;align-items:center;margin-bottom:16px}
+select,input,textarea,button{font:inherit;color:inherit}
+select,input[type=number],input[type=text],input[type=datetime-local],input[type=time],input[type=date],textarea{
+  background:var(--field);border:1px solid var(--card-line);border-radius:12px;padding:12px 14px;width:100%;outline:none;transition:all .2s ease}
+select:focus,input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-color:var(--accent)}
+#drugSel{width:auto;min-width:160px;font-size:15px;font-weight:600}
+.icon-btn{background:var(--field);border:1px solid var(--card-line);border-radius:12px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:background .2s}
+.icon-btn:hover{background:var(--chip)}
+.card{background:var(--card);border:1px solid var(--card-line);border-radius:22px;padding:20px;margin-bottom:16px;box-shadow:0 4px 20px -2px rgba(0,0,0,.08)}
+.card.hero{background:var(--hero);border-color:rgba(45,212,191,0.2)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.big{font-size:38px;font-weight:800;letter-spacing:-.02em;margin:4px 0}
+.med{font-size:28px;font-weight:700}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1}
+.btn{border:1px solid var(--card-line);background:transparent;border-radius:14px;padding:13px 18px;font-weight:700;cursor:pointer;text-align:center;min-width:0;transition:all .2s}
+.btn:hover{transform:translateY(-1px);background:rgba(255,255,255,0.03)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.btn.primary:hover{opacity:.95}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--danger);border-color:rgba(248,113,113,.3)}
+.btn.sm{padding:8px 12px;border-radius:10px;font-size:13px;flex:0 0 auto}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chip{border:1px solid var(--card-line);background:transparent;border-radius:999px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:13.5px;transition:all .2s}
+.chip.on{background:var(--chip);color:var(--accent);border-color:var(--accent)}
+.bar{height:10px;border-radius:99px;background:rgba(148,163,184,.15);overflow:hidden;margin:8px 0}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s ease}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat .l{color:var(--muted);font-size:14px}
+.stat .v{font-size:24px;font-weight:800}
+.list>div{padding:12px 0;border-top:1px solid var(--card-line)}
+.list>div:first-child{border-top:0}
+.item{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.item .t{font-weight:700;font-size:16px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.readout{background:var(--chip);border-radius:14px;padding:12px 16px;margin:12px 0;font-size:14px}
+svg.chart{width:100%;height:auto;display:block;touch-action:pan-y;border-radius:12px;user-select:none;margin-top:12px}
+svg text{fill:var(--muted);font-size:10px}
+label.f{display:block;margin:10px 0 4px;color:var(--muted);font-size:13.5px;font-weight:500}
+.nav{position:fixed;left:0;right:0;bottom:0;background:var(--nav);border-top:1px solid var(--card-line);display:flex;justify-content:center;padding:8px 12px calc(10px + env(safe-area-inset-bottom));z-index:25;box-shadow:0 -10px 30px rgba(0,0,0,.15)}
+.nav div{display:flex;width:100%;max-width:640px;gap:4px}
+.nav button{flex:1;background:none;border:0;border-radius:14px;padding:6px 2px;cursor:pointer;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600;transition:all .2s}
+.nav button .ic{font-size:18px;line-height:1}
+.nav button.on{background:var(--chip);color:var(--accent)}
+.overlay{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:flex-end;justify-content:center;z-index:50;backdrop-filter:blur(4px);animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.sheet{background:var(--card);border:1px solid var(--card-line);border-radius:24px 24px 0 0;padding:22px;width:100%;max-width:640px;max-height:92vh;overflow:auto;animation:slideUp .25s cubic-bezier(0.16,1,0.3,1)}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@media(min-width:680px){.overlay{align-items:center}.sheet{border-radius:24px}}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.sheet-head h2{margin:0}
+.err{color:var(--danger);min-height:20px;margin-top:8px;font-size:13.5px;font-weight:500}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:14px;z-index:60;font-weight:600;box-shadow:0 10px 25px rgba(0,0,0,.2);animation:toastAnim .3s ease}
+@keyframes toastAnim{from{opacity:0;transform:translate(-50%,15px)}to{opacity:1;transform:translate(-50%,0)}}
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+.tag{border:1px solid var(--card-line);border-radius:999px;padding:6px 14px;font-size:13px;cursor:pointer;user-select:none;transition:all .15s}
+input.tg{display:none}
+input.tg:checked+.tag{background:var(--chip);color:var(--accent);border-color:var(--accent);font-weight:600}
+.out{display:grid;grid-template-columns:1fr auto;gap:8px 16px;margin-top:12px;background:var(--field);padding:14px;border-radius:12px;border:1px solid var(--card-line)}
+.out b{font-size:16px;text-align:right}
+footer{color:var(--muted);font-size:13px;margin-top:24px;text-align:center}
+.empty{color:var(--muted);padding:12px 0;text-align:center}
+.card.warn{border-color:var(--danger);background:rgba(248,113,113,0.03)}
+h3{font-size:15px;margin:16px 0 6px;font-weight:700}
+.subh{color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px;font-weight:700}
+/* Custom Scrollbars */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--card-line);border-radius:999px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="nav" aria-label="Main"><div id="nav"></div></nav>
+
+<script src="app-1.js"></script>
+<script src="app-2.js"></script>
+<script src="app-3.js"></script>
+</body>
+</html>

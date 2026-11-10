@@ -1,0 +1,17 @@
+{
+  "name": "Peptide Tracker",
+  "short_name": "Peptides",
+  "description": "Private peptide, dose, stock and progress tracker. Data stays on your device.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#091518",
+  "theme_color": "#091518",
+  "categories": ["health", "lifestyle"],
+  "icons": [
+    {"src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
+  ]
+}
