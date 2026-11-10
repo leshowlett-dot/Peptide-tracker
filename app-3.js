@@ -67,7 +67,7 @@ function itemModal(id){
   const ex=id?S.inv.items.find(i=>i.id===id):null;
   showModal(ex?"Edit stock item":"Add stock item",`
     <label class="f">Type</label><select name="kind">${Object.entries(KINDS).map(([k,v])=>`<option value="${k}" ${ex&&ex.kind===k?"selected":""}>${v.label}</option>`).join("")}</select>
-    <div data-kinds="peptide"><label class="f">Compound</label><select name="drug">${drugOptions(ex?.drug||S.settings.drug)}</select>
+    <div data-kinds="peptide"><label class="f">Compound</label>${drugCombo(ex?.drug||S.settings.drug)}
     <label class="f">mg per vial</label><input name="mgper" type="number" step="any" min="0" inputmode="decimal" value="${ex?.mgPer??""}" placeholder="e.g. 10">
     <label class="f">Supplier</label><input name="supplier" type="text" list="supList" maxlength="80" value="${esc(ex?.supplier||"")}" placeholder="Optional">${supList()}
     <label class="f">Batch / lot number</label><input name="batch" type="text" maxlength="60" value="${esc(ex?.batch||"")}" placeholder="Match this against your CoA">
@@ -111,7 +111,7 @@ function reconModal(prefillMl){
 function vialModal(id){
   const ex=id?S.inv.vials.find(v=>v.id===id):null;
   showModal(ex?"Adjust vial":"Add opened vial",`
-    <label class="f">Compound</label><select name="drug">${drugOptions(ex?.drug||S.settings.drug)}</select>
+    <label class="f">Compound</label>${drugCombo(ex?.drug||S.settings.drug)}
     <label class="f">Total mg in vial</label><input name="tot" type="number" step="any" min="0" inputmode="decimal" value="${ex?.mgTotal??""}">
     <label class="f">mg remaining</label><input name="left" type="number" step="any" min="0" inputmode="decimal" value="${ex?.mgLeft??""}" placeholder="Blank = full">
     <label class="f">Water added (mL)</label><input name="ml" type="number" step="any" min="0" inputmode="decimal" value="${ex?.ml??""}">
@@ -179,7 +179,7 @@ function linkedCount(c){
 function coaModal(id){
   const ex=id?S.coas.find(c=>c.id===id):null;
   showModal(ex?"Edit CoA":"Add CoA",`
-    <label class="f">Compound</label><select name="drug">${drugOptions(ex?.drug||S.settings.drug)}</select>
+    <label class="f">Compound</label>${drugCombo(ex?.drug||S.settings.drug)}
     <label class="f">Batch / lot number</label><input name="batch" type="text" maxlength="60" value="${esc(ex?.batch||"")}">
     <label class="f">Supplier</label><input name="supplier" type="text" list="supList" maxlength="80" value="${esc(ex?.supplier||"")}">${supList()}
     <label class="f">Testing lab</label><input name="lab" type="text" maxlength="80" value="${esc(ex?.lab||"")}" placeholder="Optional">
@@ -325,6 +325,7 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{
   const el=e.target;
+  if(el.dataset&&el.dataset.combo){ comboResolve(el,false); return; }
   if(el.closest("#modal")){
     if(el.name==="kind") syncKind();
     if(el.name==="drug"&&document.getElementById("stockSec")) document.getElementById("stockSec").innerHTML=stockSec(el.value);
@@ -352,7 +353,10 @@ document.addEventListener("change",e=>{
     rd.readAsText(f); el.value="";
   }
 });
-document.addEventListener("input",e=>{ if(e.target.id==="pickQ"){ renderPick(); return; } if(e.target.closest("#calcR,#calcD")) calcUpdate(); if(e.target.closest("#modal")) updateHints(); });
+document.addEventListener("focusin",e=>{ if(e.target.dataset&&e.target.dataset.combo) e.target.select(); });
+document.addEventListener("focusout",e=>{ if(e.target.dataset&&e.target.dataset.combo) comboResolve(e.target,true); });
+document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.dataset&&e.target.dataset.combo){ e.preventDefault(); if(comboResolve(e.target,false)) e.target.blur(); } });
+document.addEventListener("input",e=>{ if(e.target.dataset&&e.target.dataset.combo){ if(!e.inputType||e.inputType==="insertReplacementText") comboResolve(e.target,false); return; } if(e.target.id==="pickQ"){ renderPick(); return; } if(e.target.closest("#calcR,#calcD")) calcUpdate(); if(e.target.closest("#modal")) updateHints(); });
 document.addEventListener("submit",e=>{
   if(e.target.id==="jForm"){
     e.preventDefault(); const fd=new FormData(e.target);
