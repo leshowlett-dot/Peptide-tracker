@@ -1,7 +1,7 @@
 "use strict";
 /* ---------- Constants & compound library ---------- */
 const DAY = 864e5, HOUR = 36e5;
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const PALETTE = ["#2fb89a","#e0a63a","#6aa9ff","#e86f8c","#a58bff","#8bc34a","#ff8f5a","#4dd0e1","#d4a5ff","#c0ca33",
   "#f06292","#90a4ae","#ffb74d","#26a69a","#7986cb","#aed581","#ba68c8","#4fc3f7","#ff8a65","#9ccc65",
   "#f48fb1","#80cbc4","#ce93d8","#ffd54f","#81d4fa","#bcaaa4"];
@@ -227,6 +227,22 @@ const drugOptions = sel => {
   const groups={}; allDrugs().forEach(d=>(groups[d.group]??=[]).push(d));
   return Object.entries(groups).map(([g,ds])=>`<optgroup label="${esc(g)}">${ds.map(d=>`<option value="${esc(d.id)}" ${d.id===sel?"selected":""}>${esc(d.name)}</option>`).join("")}</optgroup>`).join("");
 };
+// Type-ahead compound picker: visible search box + hidden input that holds the compound id.
+function ensureDrugList(){
+  let dl=document.getElementById("drugList"); if(!dl){ dl=document.createElement("datalist"); dl.id="drugList"; document.body.appendChild(dl); }
+  dl.innerHTML=allDrugs().map(d=>`<option value="${esc(d.name)}">`).join("");
+}
+function drugCombo(sel,{name="drug",id=""}={}){
+  ensureDrugList();
+  return `<span class="combo" style="flex:1;min-width:0;display:block"><input type="text" data-combo="1" list="drugList" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%" placeholder="Search compounds…" aria-label="Search compounds" value="${esc(drugById(sel).name)}"><input type="hidden" name="${name}" ${id?`id="${id}"`:""} value="${esc(sel)}"></span>`;
+}
+function comboResolve(vis,final){
+  const hid=vis.parentElement.querySelector('input[type=hidden]'), q=vis.value.trim().toLowerCase();
+  const m=allDrugs().find(d=>d.name.toLowerCase()===q);
+  if(m){ if(hid.value!==m.id){ hid.value=m.id; hid.dispatchEvent(new Event("change",{bubbles:true})); } return true; }
+  if(final) vis.value=drugById(hid.value).name;
+  return false;
+}
 
 /* ---------- Modals: shots, weight, goal, custom ---------- */
 function shotModal(id,pre){
@@ -236,7 +252,7 @@ function shotModal(id,pre){
   const useMcg = src && src.mg<0.1;
   const dsel = (src&&src.drug)||S.settings.drug;
   showModal(ex?"Edit shot":"Log a shot", `
-    <label class="f">Compound</label><select name="drug">${drugOptions(dsel)}</select>
+    <label class="f">Compound</label>${drugCombo(dsel)}
     <label class="f">Dose</label>
     <div class="row"><input name="dose" type="number" inputmode="decimal" step="any" min="0" placeholder="e.g. 2.5" value="${src?esc(fmtNum(useMcg?mgv*1000:mgv,4)):""}" style="flex:2">
     <select name="unit" style="flex:1"><option value="mg" ${useMcg?"":"selected"}>mg</option><option value="mcg" ${useMcg?"selected":""}>mcg</option></select></div>
@@ -301,7 +317,7 @@ function header(title){
   const d=new Date();
   return `<div class="eyebrow">${d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div>
   <h1>${title}</h1>
-  <div class="topbar"><select id="drugSel" aria-label="Selected compound">${drugOptions(S.settings.drug)}</select>
+  <div class="topbar">${drugCombo(S.settings.drug,{id:"drugSel"})}
   <button class="icon-btn" data-action="theme" aria-label="Toggle light or dark theme" title="Toggle theme">◐</button></div>`;
 }
 function nextShotTs(){
