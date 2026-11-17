@@ -3,7 +3,7 @@
 const AIKEY="peptide-tracker-ai-key";   // keys live outside the main data so they are never exported in backups
 const PROVIDERS={
   gemini:{label:"Google Gemini (free key)",short:"Google",keyName:AIKEY+"-gemini",setting:"aiModelG",site:"aistudio.google.com",
-    models:[["gemini-flash-latest","Gemini Flash"],["gemini-flash-lite-latest","Gemini Flash-Lite (lighter)"]]},
+    models:[["gemini-2.5-flash","Gemini 2.5 Flash"],["gemini-2.5-flash-lite","Gemini 2.5 Flash-Lite (fastest)"],["gemini-flash-latest","Gemini Flash latest (may be slower)"]]},
   claude:{label:"Anthropic Claude (paid key)",short:"Anthropic",keyName:AIKEY,setting:"aiModel",site:"console.anthropic.com",
     models:[["claude-sonnet-5-5","Sonnet 5.5 (more accurate)"],["claude-haiku-5-5","Haiku 5.5 (cheapest)"]]}
 };
@@ -17,6 +17,12 @@ const MEAL_PROMPT=`You estimate calories and protein from a photo of food. Ident
 {"items":[{"name":string,"portion":string,"kcal":number,"protein_g":number}],"kcal_low":number,"kcal_high":number,"protein_low":number,"protein_high":number,"assumptions":string}
 The range should reflect honest uncertainty. Keep "assumptions" to one short sentence.`;
 
+async function timedFetch(url,opts,ms=45000){
+  const ac=new AbortController(), t=setTimeout(()=>ac.abort(),ms);
+  try{ return await fetch(url,{...opts,signal:ac.signal}); }
+  catch(e){ throw new Error(ac.signal.aborted?"Took too long (no reply). Your network may be blocking the service. Try mobile data.":"Couldn't reach the service. Your network may be blocking it, or you're offline. Try mobile data."); }
+  finally{ clearTimeout(t); }
+}
 function loadImg(file){ return new Promise((res,rej)=>{ const u=URL.createObjectURL(file), im=new Image(); im.onload=()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror=()=>rej(new Error("Couldn't read that image.")); im.src=u; }); }
 async function shrinkImage(file){
   const im=await loadImg(file), k=Math.min(1,1280/Math.max(im.width,im.height));
@@ -28,12 +34,12 @@ async function estimateMeal(dataUrl,hint){
   if(aiProv()==="gemini") return estimateGemini(key,dataUrl,hint);
   let r;
   try{
-    r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+    r=await timedFetch("https://api.anthropic.com/v1/messages",{method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({model:aiModel(),max_tokens:800,messages:[{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:"image/jpeg",data:dataUrl.split(",")[1]}},
         {type:"text",text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}]})});
-  }catch(e){ throw new Error("Couldn't reach the API. Check your connection."); }
+  }catch(e){ throw e; }
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
     throw new Error(r.status===401?"The API key was rejected. Check it in Settings.":`Request failed (${r.status}). ${m}`); }
   const j=await r.json(), t=(j.content||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
@@ -44,11 +50,11 @@ async function estimateMeal(dataUrl,hint){
 async function estimateGemini(key,dataUrl,hint){
   let r;
   try{
-    r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${aiModel()}:generateContent`,{method:"POST",
+    r=await timedFetch(`https://generativelanguage.googleapis.com/v1beta/models/${aiModel()}:generateContent`,{method:"POST",
       headers:{"content-type":"application/json","x-goog-api-key":key},
       body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:"image/jpeg",data:dataUrl.split(",")[1]}},
-        {text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}],generationConfig:{temperature:0.2,responseMimeType:"application/json"}})});
-  }catch(e){ throw new Error("Couldn't reach the API. Check your connection."); }
+        {text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}],generationConfig:{temperature:0.2,responseMimeType:"application/json",maxOutputTokens:1500,...(aiModel().startsWith("gemini-2.5")?{thinkingConfig:{thinkingBudget:0}}:{})}})});
+  }catch(e){ throw e; }
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
     throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}). ${m}`); }
   const j=await r.json(), t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
@@ -94,7 +100,8 @@ function aiCardHtml(){
     <label class="f">Provider</label><select data-aiprov="1">${Object.entries(PROVIDERS).map(([k,v])=>`<option value="${k}" ${aiProv()===k?"selected":""}>${v.label}</option>`).join("")}</select>
     <label class="f">API key</label><input type="password" data-aikey="1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste key" value="${has?"••••••••••••":""}">
     <label class="f">Model</label><select data-aimodel="1">${P.models.map(([v,l])=>`<option value="${v}" ${aiModel()===v?"selected":""}>${l}</option>`).join("")}</select>
-    <div class="row" style="margin-top:12px">${has?`<span class="small" style="color:var(--accent)">✓ Key saved on this device</span><button class="btn sm danger" data-action="aiKeyClear">Remove key</button>`:`<span class="small muted">No key saved</span>`}</div></section>`;
+    <div class="row" style="margin-top:12px">${has?`<span class="small" style="color:var(--accent)">✓ Key saved on this device</span><button class="btn sm danger" data-action="aiKeyClear">Remove key</button>`:`<span class="small muted">No key saved</span>`}</div>
+    <div class="row" style="margin-top:10px"><button class="btn sm" data-action="aiTest" style="flex:1">Test connection</button></div><div class="small muted" id="aiTestOut" role="status" style="margin-top:6px"></div></section>`;
 }
 
 const _viewToday=viewToday, _viewSettings=viewSettings;
@@ -103,6 +110,17 @@ viewSettings=function(){ return _viewSettings().replace('<section class="card"><
 
 Object.assign(actions,{
   mealAdd:()=>mealModal(),
+  aiTest:async()=>{
+    const out=document.getElementById("aiTestOut"); if(!out) return; const key=aiKey();
+    if(!key){ out.textContent="Paste and save a key first."; return; }
+    out.textContent="Testing…";
+    try{
+      const r=aiProv()==="gemini"
+        ?await timedFetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",{headers:{"x-goog-api-key":key}},15000)
+        :await timedFetch("https://api.anthropic.com/v1/models?limit=1",{headers:{"x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"}},15000);
+      out.textContent=r.ok?"✓ Connected and the key works.":([400,401,403].includes(r.status)?`Reached the service but the key was rejected (${r.status}).`:`Reached the service but it returned status ${r.status}.`);
+    }catch(e){ out.textContent=e.message; }
+  },
   mealDel:el=>{ const m=meals().find(x=>x.id===el.dataset.id); if(!m||!confirm("Delete this meal?")) return;
     const k=dateKey(m.ts); S.protein[k]=Math.max(0,Math.round(((S.protein[k]||0)-m.protein)*10)/10);
     S.meals=meals().filter(x=>x!==m); save(); render(); },
@@ -112,7 +130,8 @@ Object.assign(actions,{
     const st=m.querySelector("#mealStatus"), f=m.querySelector("form");
     if(!mealImg){ st.textContent="Choose a photo first."; return; }
     if(!aiKey()){ st.textContent="Add your API key in Settings first."; return; }
-    el.disabled=true; st.textContent="Analysing photo…";
+    el.disabled=true; let secs=0; st.textContent="Analysing photo…";
+    const tick=setInterval(()=>{ secs++; if(document.getElementById("mealStatus")) document.getElementById("mealStatus").textContent=`Analysing photo… ${secs}s`; },1000);
     try{
       const r=await estimateMeal(mealImg,f.elements.hint.value.trim());
       if(!document.getElementById("modal")) return;
@@ -123,7 +142,7 @@ Object.assign(actions,{
       const rng=(a,b,u)=>(isFinite(a)&&isFinite(b))?`${Math.round(a)}–${Math.round(b)} ${u}`:"";
       st.innerHTML=`Estimated range: ${esc(rng(r.kcal_low,r.kcal_high,"kcal"))}${rng(r.protein_low,r.protein_high,"g")?`, ${esc(rng(r.protein_low,r.protein_high,"g protein"))}`:""}. ${esc(r.assumptions||"")}<br>${items.map(i=>`• ${esc(i.name)}${i.portion?" ("+esc(i.portion)+")":""}: ${fmtNum(Number(i.kcal)||0,0)} kcal, ${fmtNum(Number(i.protein_g)||0,0)} g`).join("<br>")}<br>You can edit the numbers before saving.`;
     }catch(e){ if(document.getElementById("modal")) st.textContent=e.message; }
-    finally{ el.disabled=false; }
+    finally{ clearInterval(tick); el.disabled=false; }
   }
 });
 
