@@ -60,7 +60,7 @@ async function estimateGemini(key,dataUrl,hint,tried=[]){
   }catch(e){ throw e; }
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
     if(r.status===404) return estimateGemini(key,dataUrl,hint,[...tried,model]);   // model retired: try the next one
-    throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}) [build 1.5.4, ${model}]. ${m}`); }
+    throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}) [build 1.5.5, ${model}]. ${m}`); }
   const j=await r.json(), t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
   if(!m) throw new Error("Couldn't read the estimate. Try again.");
   let out; try{ out=JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
@@ -95,7 +95,8 @@ function mealsCard(){
   const key=dateKey(Date.now()), list=meals().filter(m=>dateKey(m.ts)===key);
   const kc=list.reduce((a,m)=>a+m.kcal,0), pr=list.reduce((a,m)=>a+m.protein,0);
   return `<section class="card"><h2>Meals today</h2>
-    <div class="grid2"><div class="stat"><div class="l">Calories</div><div class="v">${fmtNum(kc,0)}</div></div><div class="stat"><div class="l">Protein</div><div class="v">${fmtNum(pr,0)} g</div></div></div>
+    <div class="grid2"><div class="stat"><div class="l">Calories</div><div class="v">${fmtNum(kc,0)}${S.settings.calGoal>0?` <span class="muted small">/ ${fmtNum(S.settings.calGoal,0)}</span>`:""}</div></div><div class="stat"><div class="l">Protein</div><div class="v">${fmtNum(pr,0)} g</div></div></div>
+    ${S.settings.calGoal>0?`<div class="bar"><i style="width:${Math.min(100,kc/S.settings.calGoal*100)}%"></i></div><div class="muted small">${kc>S.settings.calGoal?fmtNum(kc-S.settings.calGoal,0)+" kcal over target":fmtNum(S.settings.calGoal-kc,0)+" kcal left"}</div>`:`<div class="muted small" style="margin-top:8px">Set a calorie target in Settings.</div>`}
     ${list.length?`<div class="list" style="margin-top:12px">${list.map(m=>`<div class="item"><div><div class="t" style="font-size:17px">${esc(m.desc||"Meal")}</div><div class="muted small">${fmtTime(m.ts)} · ${fmtNum(m.kcal,0)} kcal · ${fmtNum(m.protein,0)} g protein</div></div><button class="btn sm danger" data-action="mealDel" data-id="${m.id}" aria-label="Delete meal">✕</button></div>`).join("")}</div>`:`<p class="muted small">No meals logged today. Protein from meals also counts toward your daily protein bar below.</p>`}
     <div class="row" style="margin-top:14px"><button class="btn primary" data-action="mealAdd">Add meal</button></div></section>`;
 }
@@ -107,15 +108,36 @@ function aiCardHtml(){
     <label class="f">API key</label><input type="password" data-aikey="1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste key" value="${has?"••••••••••••":""}">
     <label class="f">Model</label><select data-aimodel="1">${P.models.map(([v,l])=>`<option value="${v}" ${aiModel()===v?"selected":""}>${l}</option>`).join("")}</select>
     <div class="row" style="margin-top:12px">${has?`<span class="small" style="color:var(--accent)">✓ Key saved on this device</span><button class="btn sm danger" data-action="aiKeyClear">Remove key</button>`:`<span class="small muted">No key saved</span>`}</div>
-    <div class="row" style="margin-top:10px"><button class="btn sm" data-action="aiTest" style="flex:1">Test connection</button></div><div class="small muted" id="aiTestOut" role="status" style="margin-top:6px"></div><p class="small muted">Meal code build 1.5.4</p></section>`;
+    <div class="row" style="margin-top:10px"><button class="btn sm" data-action="aiTest" style="flex:1">Test connection</button></div><div class="small muted" id="aiTestOut" role="status" style="margin-top:6px"></div><p class="small muted">Meal code build 1.5.5</p></section>`;
 }
 
+const CAL_ACT=[[1.2,"Sedentary (little exercise)"],[1.375,"Light (1-3 workouts/week)"],[1.55,"Moderate (3-5 workouts/week)"],[1.725,"Very active (6-7 workouts/week)"]];
+function calEst(){
+  const s=S.settings, W=S.weights, kg=W.length?W[W.length-1].kg:null, age=Number(s.calAge), h=Number(s.calHeight), act=Number(s.calAct)||1.375;
+  if(!(kg>0&&age>0&&h>0)) return null;
+  const bmr=10*kg+6.25*h-5*age+5, tdee=Math.round(bmr*act/10)*10;
+  return {kg,bmr:Math.round(bmr),tdee,sugg:Math.max(1500,Math.round((tdee-500)/50)*50)};
+}
+function calCardHtml(){
+  const s=S.settings, e=calEst(), act=Number(s.calAct)||1.375;
+  return `<section class="card"><h2>Calorie target</h2>
+    <label class="f">Calories per day (kcal)</label><input type="number" min="0" step="50" inputmode="numeric" data-cal="calGoal" value="${s.calGoal??""}" placeholder="Not set">
+    <div class="grid2"><div><label class="f">Age</label><input type="number" min="14" max="110" inputmode="numeric" data-cal="calAge" value="${s.calAge??""}" placeholder="years"></div>
+    <div><label class="f">Height (cm)</label><input type="number" min="100" max="250" inputmode="numeric" data-cal="calHeight" value="${s.calHeight??""}" placeholder="cm"></div></div>
+    <label class="f">Activity</label><select data-cal="calAct">${CAL_ACT.map(([v,l])=>`<option value="${v}" ${act===v?"selected":""}>${l}</option>`).join("")}</select>
+    ${e?`<div class="readout">Estimated maintenance: <b>${fmtNum(e.tdee,0)} kcal/day</b> (resting ${fmtNum(e.bmr,0)}), based on ${fmtNum(e.kg,1)} kg. A moderate-loss target is about <b>${fmtNum(e.sugg,0)} kcal</b> (maintenance minus ~500).</div>
+      <button class="btn" data-action="calUse" style="width:100%">Use ${fmtNum(e.sugg,0)} kcal as my target</button>`:`<p class="muted small">Enter age and height (and log a weight) to get a maintenance estimate. Uses the Mifflin-St Jeor equation for men.</p>`}
+    <p class="muted small">Rough estimate only. If you're on a GLP-1, agree your calorie and protein targets with your prescriber or a dietitian, and avoid very low intakes.</p></section>`;
+}
+const APP_VERSION="1.5.5", APP_DATE="17 Nov 2026";
+footerHtml=function(){ return `<footer>v${APP_VERSION} · Released ${APP_DATE} · Personal tracking · Medication amounts are estimates, not blood measurements or dosing advice.</footer>`; };
 const _viewToday=viewToday, _viewSettings=viewSettings;
 viewToday=function(){ return _viewToday().replace(/<section class="card">\s*<h2>Daily habits<\/h2>/,m=>mealsCard()+m); };
-viewSettings=function(){ return _viewSettings().replace('<section class="card"><h2>Personal goals</h2>',m=>aiCardHtml()+m); };
+viewSettings=function(){ return _viewSettings().replace('<section class="card"><h2>Personal goals</h2>',m=>aiCardHtml()+calCardHtml()+m); };
 
 Object.assign(actions,{
   mealAdd:()=>mealModal(),
+  calUse:()=>{ const e=calEst(); if(!e) return; S.settings.calGoal=e.sugg; save(); render(); toast("Calorie target set"); },
   aiTest:async()=>{
     const out=document.getElementById("aiTestOut"); if(!out) return; const key=aiKey();
     if(!key){ out.textContent="Paste and save a key first."; return; }
@@ -159,6 +181,8 @@ document.addEventListener("change",async e=>{
     if(!f){ mealImg=null; if(pv) pv.style.display="none"; return; }
     try{ mealImg=await shrinkImage(f); if(pv){ pv.src=mealImg; pv.style.display="block"; } if(st) st.textContent="Photo ready. Tap Estimate from photo."; }
     catch(err){ mealImg=null; if(st) st.textContent=err.message; }
+  } else if(el.dataset&&el.dataset.cal){
+    const v=el.value.trim(); S.settings[el.dataset.cal]=v===""?null:Math.max(0,Number(v)); save(); render(); toast("Saved");
   } else if(el.dataset&&el.dataset.aikey){
     const v=el.value.trim();
     const kn=PROVIDERS[aiProv()].keyName;
