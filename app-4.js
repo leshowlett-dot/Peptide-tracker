@@ -60,7 +60,7 @@ async function estimateGemini(key,dataUrl,hint,tried=[]){
   }catch(e){ throw e; }
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
     if(r.status===404) return estimateGemini(key,dataUrl,hint,[...tried,model]);   // model retired: try the next one
-    throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}). ${m}`); }
+    throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}) [build 1.5.4, ${model}]. ${m}`); }
   const j=await r.json(), t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
   if(!m) throw new Error("Couldn't read the estimate. Try again.");
   let out; try{ out=JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
@@ -107,7 +107,7 @@ function aiCardHtml(){
     <label class="f">API key</label><input type="password" data-aikey="1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste key" value="${has?"••••••••••••":""}">
     <label class="f">Model</label><select data-aimodel="1">${P.models.map(([v,l])=>`<option value="${v}" ${aiModel()===v?"selected":""}>${l}</option>`).join("")}</select>
     <div class="row" style="margin-top:12px">${has?`<span class="small" style="color:var(--accent)">✓ Key saved on this device</span><button class="btn sm danger" data-action="aiKeyClear">Remove key</button>`:`<span class="small muted">No key saved</span>`}</div>
-    <div class="row" style="margin-top:10px"><button class="btn sm" data-action="aiTest" style="flex:1">Test connection</button></div><div class="small muted" id="aiTestOut" role="status" style="margin-top:6px"></div></section>`;
+    <div class="row" style="margin-top:10px"><button class="btn sm" data-action="aiTest" style="flex:1">Test connection</button></div><div class="small muted" id="aiTestOut" role="status" style="margin-top:6px"></div><p class="small muted">Meal code build 1.5.4</p></section>`;
 }
 
 const _viewToday=viewToday, _viewSettings=viewSettings;
