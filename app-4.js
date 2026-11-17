@@ -1,10 +1,16 @@
 "use strict";
 /* ---------- Meals: photo -> rough calories & protein via the Claude API ---------- */
-const AIKEY="peptide-tracker-ai-key";   // kept outside the main data so it is never exported in backups
-const MEAL_MODELS=[["claude-sonnet-5-5","Sonnet 5.5 (more accurate)"],["claude-haiku-5-5","Haiku 5.5 (cheapest)"]];
+const AIKEY="peptide-tracker-ai-key";   // keys live outside the main data so they are never exported in backups
+const PROVIDERS={
+  gemini:{label:"Google Gemini (free key)",short:"Google",keyName:AIKEY+"-gemini",setting:"aiModelG",site:"aistudio.google.com",
+    models:[["gemini-flash-latest","Gemini Flash"],["gemini-flash-lite-latest","Gemini Flash-Lite (lighter)"]]},
+  claude:{label:"Anthropic Claude (paid key)",short:"Anthropic",keyName:AIKEY,setting:"aiModel",site:"console.anthropic.com",
+    models:[["claude-sonnet-5-5","Sonnet 5.5 (more accurate)"],["claude-haiku-5-5","Haiku 5.5 (cheapest)"]]}
+};
 const meals=()=>S.meals||(S.meals=[]);
-const aiKey=()=>{ try{ return localStorage.getItem(AIKEY)||""; }catch(e){ return ""; } };
-const aiModel=()=>S.settings.aiModel||MEAL_MODELS[0][0];
+const aiProv=()=>PROVIDERS[S.settings.aiProvider]?S.settings.aiProvider:"gemini";
+const aiKey=()=>{ try{ return localStorage.getItem(PROVIDERS[aiProv()].keyName)||""; }catch(e){ return ""; } };
+const aiModel=()=>{ const P=PROVIDERS[aiProv()], v=S.settings[P.setting]; return P.models.some(m=>m[0]===v)?v:P.models[0][0]; };
 let mealImg=null;
 
 const MEAL_PROMPT=`You estimate calories and protein from a photo of food. Identify each food item, assume a realistic portion size from visual cues (plates, hands, packaging, typical servings), and estimate. Include sauces, spreads and oils you can reasonably infer. Reply with JSON only, no other text:
@@ -18,7 +24,8 @@ async function shrinkImage(file){
   c.getContext("2d").drawImage(im,0,0,c.width,c.height); return c.toDataURL("image/jpeg",0.8);
 }
 async function estimateMeal(dataUrl,hint){
-  const key=aiKey(); if(!key) throw new Error("Add your Anthropic API key in Settings first.");
+  const key=aiKey(); if(!key) throw new Error("Add your API key in Settings first.");
+  if(aiProv()==="gemini") return estimateGemini(key,dataUrl,hint);
   let r;
   try{
     r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
@@ -30,6 +37,21 @@ async function estimateMeal(dataUrl,hint){
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
     throw new Error(r.status===401?"The API key was rejected. Check it in Settings.":`Request failed (${r.status}). ${m}`); }
   const j=await r.json(), t=(j.content||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error("Couldn't read the estimate. Try again.");
+  try{ return JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
+}
+
+async function estimateGemini(key,dataUrl,hint){
+  let r;
+  try{
+    r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${aiModel()}:generateContent`,{method:"POST",
+      headers:{"content-type":"application/json","x-goog-api-key":key},
+      body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:"image/jpeg",data:dataUrl.split(",")[1]}},
+        {text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}],generationConfig:{temperature:0.2,responseMimeType:"application/json"}})});
+  }catch(e){ throw new Error("Couldn't reach the API. Check your connection."); }
+  if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
+    throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}). ${m}`); }
+  const j=await r.json(), t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
   if(!m) throw new Error("Couldn't read the estimate. Try again.");
   try{ return JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
 }
@@ -46,7 +68,7 @@ function mealModal(){
     <div class="grid2"><div><label class="f">Calories (kcal)</label><input name="kcal" type="number" step="any" min="0" inputmode="decimal"></div>
     <div><label class="f">Protein (g)</label><input name="prot" type="number" step="any" min="0" inputmode="decimal"></div></div>
     <label class="f">Date & time</label><input name="when" type="datetime-local" value="${toLocalInput(Date.now())}">
-    <p class="muted small">Estimates only. The photo is sent to Anthropic for analysis and isn't stored in this app.</p>`,
+    <p class="muted small">Estimates only. The photo is sent to ${PROVIDERS[aiProv()].short} for analysis and isn't stored in this app.</p>`,
   fd=>{
     const kcal=parseFloat(fd.get("kcal")), prot=parseFloat(fd.get("prot")), ts=fromLocalInput(fd.get("when"));
     if(!(kcal>=0)&&!(prot>=0)) return "Enter calories or protein, or use Estimate from photo.";
@@ -66,11 +88,12 @@ function mealsCard(){
     <div class="row" style="margin-top:14px"><button class="btn primary" data-action="mealAdd">Add meal</button></div></section>`;
 }
 function aiCardHtml(){
-  const has=!!aiKey();
+  const has=!!aiKey(), P=PROVIDERS[aiProv()], free=aiProv()==="gemini";
   return `<section class="card"><h2>Meal photo analysis</h2>
-    <p class="muted small">Uses your own Anthropic API key to estimate calories and protein from a photo. The key is stored only in this browser (not in backups or on GitHub). Create one at console.anthropic.com and set a low monthly spend limit. Each photo costs roughly a cent or two.</p>
-    <label class="f">API key</label><input type="password" data-aikey="1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${has?"••••••••••••":""}">
-    <label class="f">Model</label><select data-aimodel="1">${MEAL_MODELS.map(([v,l])=>`<option value="${v}" ${aiModel()===v?"selected":""}>${l}</option>`).join("")}</select>
+    <p class="muted small">Estimates calories and protein from a photo using your own API key. ${free?"Get a free key at aistudio.google.com (no card needed). On the free tier Google may use your photos to improve its products.":"Create a key at console.anthropic.com and set a low monthly spend limit. Each photo costs roughly a cent or two."} The key is stored only in this browser, never in backups or on GitHub.</p>
+    <label class="f">Provider</label><select data-aiprov="1">${Object.entries(PROVIDERS).map(([k,v])=>`<option value="${k}" ${aiProv()===k?"selected":""}>${v.label}</option>`).join("")}</select>
+    <label class="f">API key</label><input type="password" data-aikey="1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste key" value="${has?"••••••••••••":""}">
+    <label class="f">Model</label><select data-aimodel="1">${P.models.map(([v,l])=>`<option value="${v}" ${aiModel()===v?"selected":""}>${l}</option>`).join("")}</select>
     <div class="row" style="margin-top:12px">${has?`<span class="small" style="color:var(--accent)">✓ Key saved on this device</span><button class="btn sm danger" data-action="aiKeyClear">Remove key</button>`:`<span class="small muted">No key saved</span>`}</div></section>`;
 }
 
@@ -83,12 +106,12 @@ Object.assign(actions,{
   mealDel:el=>{ const m=meals().find(x=>x.id===el.dataset.id); if(!m||!confirm("Delete this meal?")) return;
     const k=dateKey(m.ts); S.protein[k]=Math.max(0,Math.round(((S.protein[k]||0)-m.protein)*10)/10);
     S.meals=meals().filter(x=>x!==m); save(); render(); },
-  aiKeyClear:()=>{ try{ localStorage.removeItem(AIKEY); }catch(e){} render(); toast("Key removed"); },
+  aiKeyClear:()=>{ try{ localStorage.removeItem(PROVIDERS[aiProv()].keyName); }catch(e){} render(); toast("Key removed"); },
   mealEstimate:async el=>{
     const m=document.getElementById("modal"); if(!m) return;
     const st=m.querySelector("#mealStatus"), f=m.querySelector("form");
     if(!mealImg){ st.textContent="Choose a photo first."; return; }
-    if(!aiKey()){ st.textContent="Add your Anthropic API key in Settings first."; return; }
+    if(!aiKey()){ st.textContent="Add your API key in Settings first."; return; }
     el.disabled=true; st.textContent="Analysing photo…";
     try{
       const r=await estimateMeal(mealImg,f.elements.hint.value.trim());
@@ -113,10 +136,12 @@ document.addEventListener("change",async e=>{
     catch(err){ mealImg=null; if(st) st.textContent=err.message; }
   } else if(el.dataset&&el.dataset.aikey){
     const v=el.value.trim();
-    if(!v){ try{ localStorage.removeItem(AIKEY); }catch(e){} }
-    else if(!/^•+$/.test(v)){ try{ localStorage.setItem(AIKEY,v); toast("Key saved on this device"); }catch(e){ toast("Couldn't save the key"); } }
+    const kn=PROVIDERS[aiProv()].keyName;
+    if(!v){ try{ localStorage.removeItem(kn); }catch(e){} }
+    else if(!/^•+$/.test(v)){ try{ localStorage.setItem(kn,v); toast("Key saved on this device"); }catch(e){ toast("Couldn't save the key"); } }
     render();
-  } else if(el.dataset&&el.dataset.aimodel){ S.settings.aiModel=el.value; save(); toast("Saved"); }
+  } else if(el.dataset&&el.dataset.aiprov){ S.settings.aiProvider=el.value; save(); render(); }
+  else if(el.dataset&&el.dataset.aimodel){ S.settings[PROVIDERS[aiProv()].setting]=el.value; save(); toast("Saved"); }
 });
 
 render();
