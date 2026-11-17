@@ -3,7 +3,7 @@
 const AIKEY="peptide-tracker-ai-key";   // keys live outside the main data so they are never exported in backups
 const PROVIDERS={
   gemini:{label:"Google Gemini (free key)",short:"Google",keyName:AIKEY+"-gemini",setting:"aiModelG",site:"aistudio.google.com",
-    models:[["gemini-2.5-flash","Gemini 2.5 Flash"],["gemini-2.5-flash-lite","Gemini 2.5 Flash-Lite (fastest)"],["gemini-flash-latest","Gemini Flash latest (may be slower)"]]},
+    models:[["gemini-3.8-flash","Gemini 3.8 Flash"],["gemini-flash-latest","Gemini Flash (latest alias)"],["gemini-flash-lite-latest","Gemini Flash-Lite (lighter)"]]},
   claude:{label:"Anthropic Claude (paid key)",short:"Anthropic",keyName:AIKEY,setting:"aiModel",site:"console.anthropic.com",
     models:[["claude-sonnet-5-5","Sonnet 5.5 (more accurate)"],["claude-haiku-5-5","Haiku 5.5 (cheapest)"]]}
 };
@@ -47,19 +47,25 @@ async function estimateMeal(dataUrl,hint){
   try{ return JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
 }
 
-async function estimateGemini(key,dataUrl,hint){
+async function estimateGemini(key,dataUrl,hint,tried=[]){
+  const list=PROVIDERS.gemini.models.map(m=>m[0]);
+  const model=tried.length?list.find(m=>!tried.includes(m)):aiModel();
+  if(!model) throw new Error("None of the Gemini models is available to this key. Check aistudio.google.com.");
   let r;
   try{
-    r=await timedFetch(`https://generativelanguage.googleapis.com/v1beta/models/${aiModel()}:generateContent`,{method:"POST",
+    r=await timedFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{method:"POST",
       headers:{"content-type":"application/json","x-goog-api-key":key},
       body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:"image/jpeg",data:dataUrl.split(",")[1]}},
-        {text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}],generationConfig:{temperature:0.2,responseMimeType:"application/json",maxOutputTokens:1500,...(aiModel().startsWith("gemini-2.5")?{thinkingConfig:{thinkingBudget:0}}:{})}})});
+        {text:MEAL_PROMPT+(hint?`\nUser notes about portions: ${hint}`:"")}]}],generationConfig:{temperature:0.2,responseMimeType:"application/json",maxOutputTokens:4000,...(model.startsWith("gemini-2.5")?{thinkingConfig:{thinkingBudget:0}}:{})}})},60000);
   }catch(e){ throw e; }
   if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(e){}
+    if(r.status===404) return estimateGemini(key,dataUrl,hint,[...tried,model]);   // model retired: try the next one
     throw new Error(/api key/i.test(m)?"The API key was rejected. Check it in Settings.":r.status===429?"Free limit reached for now. Try again in a minute, or tomorrow.":`Request failed (${r.status}). ${m}`); }
   const j=await r.json(), t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(b=>b.text||"").join(""), m=t.match(/\{[\s\S]*\}/);
   if(!m) throw new Error("Couldn't read the estimate. Try again.");
-  try{ return JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
+  let out; try{ out=JSON.parse(m[0]); }catch(e){ throw new Error("Couldn't read the estimate. Try again."); }
+  if(model!==aiModel()){ S.settings.aiModelG=model; save(); }   // remember the model that worked
+  return out;
 }
 
 function mealModal(){
