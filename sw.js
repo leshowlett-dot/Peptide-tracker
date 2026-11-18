@@ -1,6 +1,6 @@
 // Offline-first service worker. Bump CACHE when you ship a new version.
-const CACHE = "peptide-tracker-v1.5.5";
-const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./app-1.js", "./app-2.js", "./app-3.js", "./app-4.js", "./icons/icon.svg", "./icons/maskable.svg"];
+const CACHE = "peptide-tracker-v1.6.0";
+const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./app-1.js", "./app-2.js", "./app-3.js", "./app-4.js", "./app-5.js", "./icons/icon.svg", "./icons/maskable.svg"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
